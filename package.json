@@ -10,7 +10,7 @@
   "scripts": {
     "compile": "tsc",
     "test": "jest",
-    "pub": "npm run compile && npm version patch && npm publish --access public --force"
+    "pub": "npm run compile && npm publish --access public --force"
   },
   "types": "dist/types/index.d.ts",
   "files": [
@@ -24,6 +24,7 @@
   ],
   "devDependencies": {
     "@types/jest": "^26.0.24",
+    "@types/node": "^16.18.126",
     "@typescript-eslint/eslint-plugin": "^4.28.5",
     "@typescript-eslint/parser": "^4.28.5",
     "axios": "^0.21.1",
