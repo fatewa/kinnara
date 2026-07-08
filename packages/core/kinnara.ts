@@ -1,15 +1,15 @@
 import {
-  Command,
-  HttpMethod,
-  HttpProxy,
-  HttpUrlPluginName,
-  Interceptor,
-  KinnaraProxy,
-  KinnaraRuntimePlugin,
-  RequestAdapter,
-  RequestCommand,
-  RequestWrapper,
-  StaticCommandSupport
+    Command,
+    HttpMethod,
+    HttpProxy,
+    HttpUrlPluginName,
+    Interceptor,
+    KinnaraProxy,
+    KinnaraRuntimePlugin,
+    RequestAdapter,
+    RequestCommand,
+    RequestWrapper,
+    StaticCommandSupport
 } from '../types'
 import log from '../support/support-logging'
 import ApiInterceptor from './api-interceptor'
@@ -53,30 +53,33 @@ export default class Kinnara implements StaticCommandSupport, HttpProxy {
      */
     private _plugins: { [K: string]: KinnaraRuntimePlugin [] } = {}
 
-    constructor () {
-      this._interceptor = new ApiInterceptor()
+    constructor() {
+        this._interceptor = new ApiInterceptor()
     }
 
     /**
      * proxy routing
      * @param routing
      */
-    proxy<T extends object> (routing: T): KinnaraProxy<T> {
-      if (!this._adapter) {
-        throw new Error('You must specify a request adapter for request proxy.')
-      }
-      const self = this
-      // 根代理 root$->leafA$->leafB$->uri
-      this._proxy = new Proxy(routing, {
-        get: (target: any, property: string) => {
-          // 判断原始路由是否存在该属性
-          if (target.hasOwnProperty(property)) {
-            return self._injectSubProxy(target, property, self._subProxies)
-          }
-          log.error(`No related Key '${property}' is mounted on the target router`)
+    proxy<T extends object>(routing: T): KinnaraProxy<T> {
+        if (!this._adapter) {
+            throw new Error('You must specify a request adapter for request proxy.')
         }
-      })
-      return this._proxy
+        const self = this
+        // 根代理 root$->leafA$->leafB$->uri
+        this._proxy = new Proxy(routing, {
+            get: (target: any, property: string) => {
+                if (property === 'toJSON' || typeof property === 'symbol') {
+                    return undefined
+                }
+                // 判断原始路由是否存在该属性
+                if (target.hasOwnProperty(property)) {
+                    return self._injectSubProxy(target, property, self._subProxies)
+                }
+                log.error(`No related Key '${property}' is mounted on the target router`)
+            }
+        })
+        return this._proxy
     }
 
     /**
@@ -84,45 +87,45 @@ export default class Kinnara implements StaticCommandSupport, HttpProxy {
      * @param node
      * @private
      */
-    private static _isRoot (node: any): boolean {
-      return typeof node !== 'object'
+    private static _isRoot(node: any): boolean {
+        return typeof node !== 'object'
     }
 
     remove(entryPoint: string): StaticCommandSupport
     remove(cmd: Command): StaticCommandSupport
-    remove (entryPoint: string | Command): StaticCommandSupport {
-      return this
+    remove(entryPoint: string | Command): StaticCommandSupport {
+        return this
     }
 
-    install (...plugins: KinnaraRuntimePlugin []) {
-      for (const p of plugins) {
-        if (p.name) {
-          const name = p.name
-          if (!this._plugins[name]) {
-            this._plugins[name] = []
-          }
-          this._plugins[name].push(p)
+    install(...plugins: KinnaraRuntimePlugin []) {
+        for (const p of plugins) {
+            if (p.name) {
+                const name = p.name
+                if (!this._plugins[name]) {
+                    this._plugins[name] = []
+                }
+                this._plugins[name].push(p)
+            }
         }
-      }
     }
 
-    _getPlugins (type: string): KinnaraRuntimePlugin[] {
-      const plugins = this._plugins[type]
-      if (plugins) {
-        return plugins
-      }
-      return []
+    _getPlugins(type: string): KinnaraRuntimePlugin[] {
+        const plugins = this._plugins[type]
+        if (plugins) {
+            return plugins
+        }
+        return []
     }
 
-    use (cmd: Command): StaticCommandSupport {
-      Kinnara.use(cmd)
-      return this
+    use(cmd: Command): StaticCommandSupport {
+        Kinnara.use(cmd)
+        return this
     }
 
-    static use (Cmd: any) {
-      const instance = new Cmd()
-      // 安装指令
-      Kinnara._cmd[instance.name()] = Cmd
+    static use(Cmd: any) {
+        const instance = new Cmd()
+        // 安装指令
+        Kinnara._cmd[instance.name()] = Cmd
     }
 
     /**
@@ -132,76 +135,93 @@ export default class Kinnara implements StaticCommandSupport, HttpProxy {
      * @param parent 代理节点父对象
      * @private
      */
-    private _injectSubProxy (rootTarget: any, property: string, parent: any) {
-      const self = this
-      // 由于存储的结构为平层结构, 存储时将 Key 存储为 A$.B$.C 的格式
-      // 故最后一条即为当前节点，用于获取对象实际值
-      const key = property.split('$.').reverse()[0]
-      // 判定是否为根节点
-      if (!Kinnara._isRoot(rootTarget[key])) {
-        // 初始化代理对象
-        if (!parent[property]) {
-          parent[property] = {}
-        }
-        // 初始化代理字段
-        if (!parent[property]._proxy) {
-          parent[property]._proxy = {}
-        } else {
-          // 已经初始化过即直接返回，提高性能
-          return parent[property]._proxy
-        }
-        // 初始化代理字段
-        parent[property]._proxy = new Proxy(rootTarget[key], {
-          get: (t, p) => {
-            // 递归代理
-            return self._injectSubProxy(t, `${property}$.${p.toString()}`, parent[property])
-          }
-        })
-        // 返回代理对象
-        return parent[property]._proxy
-      }
-      // 此处开始为递归至根节点
-      // 取出根节点的字符串
-      let url:string = rootTarget[key]
-      // 运行 URL 插件
-      url = this._mountURLPlugins(url, property)
-      // last level, 底层代理，代理一个空对象
-      return new Proxy({}, {
-        get: (target: any, cmd) => {
-          const commands = Kinnara._cmd
-          let rootWrapper = { url }
-          // 实例化 HTTP 客户端适配器
-          if (commands.hasOwnProperty(cmd)) {
-            self._cmdProxy = new Proxy(commands, {
-              get: (cmdProxy, name) => {
-                // 执行指令
-                const command = new cmdProxy[name]()
-                const root = { url: `${url}` }
-                // 注入根请求对象
-                command.wrapper = root
-                if (command && command.entrypoint) {
-                  // 设置入口点装饰器
-                  command.bin = (...props: any) => {
-                    rootWrapper = Object.assign(root, command.entrypoint(...props))
-                    const client: any = self._http(root, root.url, property)
-                    return client
-                  }
+    private _injectSubProxy(rootTarget: any, property: string, parent: any) {
+        const self = this
+        // 由于存储的结构为平层结构, 存储时将 Key 存储为 A$.B$.C 的格式
+        // 故最后一条即为当前节点，用于获取对象实际值
+        const key = property.split('$.').reverse()[0]
+        // 判定是否为根节点
+        if (!Kinnara._isRoot(rootTarget[key])) {
+            // 初始化代理对象
+            if (!parent[property]) {
+                parent[property] = {}
+            }
+            // 初始化代理字段
+            if (!parent[property]._proxy) {
+                parent[property]._proxy = {}
+            } else {
+                // 已经初始化过即直接返回，提高性能
+                return parent[property]._proxy
+            }
+            // 初始化代理字段
+            parent[property]._proxy = new Proxy(rootTarget[key], {
+                get: (t, p) => {
+                    // 防止 Nuxt/Vue 在中间节点进行属性探测（如 toJSON, __v_isRef 等）引发死循环
+                    if (p === 'toJSON' || typeof p === 'symbol') {
+                        return undefined
+                    }
+
+                    // 递归代理
+                    return self._injectSubProxy(t, `${property}$.${p.toString()}`, parent[property])
                 }
-                // 返回执行入口
-                return command.bin
-              }
             })
-            // 返回客户端
-            return self._cmdProxy[cmd]
-          }
-          const client: any = self._http(rootWrapper, url, property)
-          // 未使用指令
-          if (client[cmd]) {
-            // 直接返回客户端
-            return client[cmd]
-          }
+            // 返回代理对象
+            return parent[property]._proxy
         }
-      })
+        // 此处开始为递归至根节点
+        // 取出根节点的字符串
+        let url: string = rootTarget[key]
+        // 运行 URL 插件
+        url = this._mountURLPlugins(url, property)
+        // last level, 底层代理，代理一个空对象
+
+        // 这里的 cmd 参数类型补全 string | symbol
+        return new Proxy({}, {
+            get: (target: any, cmd: string | symbol) => {
+
+                // 防止 Nuxt 在最底层的 API 调用节点（如 api.user.get）进行属性探测
+                if (cmd === 'toJSON' || typeof cmd === 'symbol') {
+                    return undefined
+                }
+
+                const commands = Kinnara._cmd
+                let rootWrapper = {url}
+
+                // 因为上方 cmd 允许了 symbol，这里作为对象 key 访问时需要断言为 string
+                // 实例化 HTTP 客户端适配器
+                if (commands.hasOwnProperty(cmd as string)) {
+                    self._cmdProxy = new Proxy(commands, {
+                        get: (cmdProxy, name) => {
+                            // 执行指令
+                            const command = new cmdProxy[name]()
+                            const root = {url: `${url}`}
+                            // 注入根请求对象
+                            command.wrapper = root
+                            if (command && command.entrypoint) {
+                                // 设置入口点装饰器
+                                command.bin = (...props: any) => {
+                                    rootWrapper = Object.assign(root, command.entrypoint(...props))
+                                    const client: any = self._http(root, root.url, property)
+                                    return client
+                                }
+                            }
+                            // 返回执行入口
+                            return command.bin
+                        }
+                    })
+                    // 返回客户端
+                    return self._cmdProxy[cmd as string]
+                }
+                const client: any = self._http(rootWrapper, url, property)
+
+                // 同上，断言为 string
+                // 未使用指令
+                if (client[cmd as string]) {
+                    // 直接返回客户端
+                    return client[cmd as string]
+                }
+            }
+        })
     }
 
     /**
@@ -211,44 +231,44 @@ export default class Kinnara implements StaticCommandSupport, HttpProxy {
      * @param property 请求对象路径
      * @private
      */
-    private _http (rootWrapper: RequestWrapper, original: string, property: string) {
-      // 局部抽取，减少重复代码
-      const inject = (w: RequestWrapper, m: HttpMethod = 'GET', wrapper: boolean = false): Promise<any> | any => {
-        // 请求对象封装
-        const struct = {
-          method: w?.method ? w.method : m,
-          ...rootWrapper,
-          ...w
-        }
-        // wrapper 模式
-        if (wrapper) {
-          return struct
-        }
+    private _http(rootWrapper: RequestWrapper, original: string, property: string) {
+        // 局部抽取，减少重复代码
+        const inject = (w: RequestWrapper, m: HttpMethod = 'GET', wrapper: boolean = false): Promise<any> | any => {
+            // 请求对象封装
+            const struct = {
+                method: w?.method ? w.method : m,
+                ...rootWrapper,
+                ...w
+            }
+            // wrapper 模式
+            if (wrapper) {
+                return struct
+            }
 
-        const request = this._adapter!.request(struct)
+            const request = this._adapter!.request(struct)
 
-        if (rootWrapper.observable === false) {
-          return request
+            if (rootWrapper.observable === false) {
+                return request
+            }
+
+            return this._interceptor.process(original, request, struct)
         }
-
-        return this._interceptor.process(original, request, struct)
-      }
-      const requestWrapper: RequestCommand = {
-        get: w => inject(w ?? {}),
-        post: w => inject(w ?? {}, 'POST'),
-        put: w => inject(w ?? {}, 'PUT'),
-        delete: w => inject(w ?? {}, 'DELETE'),
-        head: w => inject(w ?? {}, 'HEAD'),
-        patch: w => inject(w ?? {}, 'PATCH'),
-        options: w => inject(w ?? {}, 'OPTIONS'),
-        struct: w => inject(w ?? {}, 'GET', true)
-      }
-      return requestWrapper
+        const requestWrapper: RequestCommand = {
+            get: w => inject(w ?? {}),
+            post: w => inject(w ?? {}, 'POST'),
+            put: w => inject(w ?? {}, 'PUT'),
+            delete: w => inject(w ?? {}, 'DELETE'),
+            head: w => inject(w ?? {}, 'HEAD'),
+            patch: w => inject(w ?? {}, 'PATCH'),
+            options: w => inject(w ?? {}, 'OPTIONS'),
+            struct: w => inject(w ?? {}, 'GET', true)
+        }
+        return requestWrapper
     }
 
-    setHttpAdapter (adapter: RequestAdapter): HttpProxy {
-      this._adapter = adapter
-      return this
+    setHttpAdapter(adapter: RequestAdapter): HttpProxy {
+        this._adapter = adapter
+        return this
     }
 
     /**
@@ -257,14 +277,14 @@ export default class Kinnara implements StaticCommandSupport, HttpProxy {
      * @param uri
      * @param h
      */
-    subscribe (uri: string | RegExp, h: (request: RequestWrapper, response: any) => any): string {
-      if (uri instanceof RegExp) {
-        uri = new RegExp(uri.source.replace(/{[\w-]+}/, '[\\w-]+'))
-      } else {
-        uri = new RegExp(uri.replace(/{[\w-]+}/, '[\\w-]+').concat('$'))
-      }
-      // 注册拦截器
-      return this._interceptor.register({ uri, h })
+    subscribe(uri: string | RegExp, h: (request: RequestWrapper, response: any) => any): string {
+        if (uri instanceof RegExp) {
+            uri = new RegExp(uri.source.replace(/{[\w-]+}/, '[\\w-]+'))
+        } else {
+            uri = new RegExp(uri.replace(/{[\w-]+}/, '[\\w-]+').concat('$'))
+        }
+        // 注册拦截器
+        return this._interceptor.register({uri, h})
     }
 
     /**
@@ -272,16 +292,16 @@ export default class Kinnara implements StaticCommandSupport, HttpProxy {
      * @deprecated 该函数已于 {@version 1.0.6} 开始过期
      * @param key
      */
-    cancel (key: string): boolean {
-      return this._interceptor.unload(key)
+    cancel(key: string): boolean {
+        return this._interceptor.unload(key)
     }
 
-    private _mountURLPlugins (url: string, key: string): string {
-      let target = `${url}`
-      const urlPlugins = this._getPlugins(HTTP_URL_PLUGIN_NAME)
-      for (const p of urlPlugins) {
-        target = p.install({ url: target, chain: key.split('$.') })
-      }
-      return target
+    private _mountURLPlugins(url: string, key: string): string {
+        let target = `${url}`
+        const urlPlugins = this._getPlugins(HTTP_URL_PLUGIN_NAME)
+        for (const p of urlPlugins) {
+            target = p.install({url: target, chain: key.split('$.')})
+        }
+        return target
     }
 }

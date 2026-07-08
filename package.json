@@ -1,9 +1,9 @@
 {
   "name": "@fatewa/kinnara",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Declarative proxy http api request.",
   "main": "dist/index.js",
-  "author": "4everlynn",
+  "author": "fatewa",
   "license": "MIT",
   "homepage": "https://github.com/4everlynn/kinnara.git",
   "repository": "https://github.com/4everlynn/kinnara.git",
